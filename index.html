@@ -301,20 +301,88 @@
         <span class="rule-pill">!= → !==</span>
         <span class="rule-pill">.length() → .length</span>
         <span class="rule-pill">"&lt;? $var ?&gt;" → $var (sem aspas)</span>
+        <span class="rule-pill">'txt'?.concat($v) → `txt${ctx.v}`</span>
         <span class="rule-pill">&lt;?  ?&gt; → removido</span>
       </div>
     </div>
   </div>
 
   <script>
+    // Converte uma cadeia de .concat() SpEL em template literal JS
+    function concatToTemplateLiteral(inner) {
+      // Extrai os argumentos da cadeia: parte inicial + .concat(x).concat(y)...
+      // A expressão pode iniciar com uma string 'texto' ou ($var)?.concat(...)
+      const parts = [];
+
+      // Divide a expressão em tokens de concat
+      // Padrão: 'string'  ou  $var  ou  ($var)
+      // seguidos de ?.concat(...) ou .concat(...)
+      let remaining = inner.trim();
+
+      // Coleta o primeiro elemento antes de qualquer .concat
+      // Pode ser: 'string literal' ou ($var) ou $var
+      const firstMatch = remaining.match(/^(\(?\s*'(?:[^'\\]|\\.)*'\s*\)?|(?:\(?\s*\$[A-Za-z_][A-Za-z0-9_]*\s*\)?))/);
+      if (!firstMatch) return null; // não reconheceu, retorna null para não converter
+
+      let pos = 0;
+      // Tokeniza toda a cadeia de concat
+      const tokenRegex = /('(?:[^'\\]|\\.)*'|\$[A-Za-z_][A-Za-z0-9_]*)/g;
+      // Estratégia: separar pelos ?.concat( ou .concat( e coletar os argumentos
+      const segments = remaining.split(/\??\.concat\(/);
+
+      for (let i = 0; i < segments.length; i++) {
+        let seg = segments[i].trim();
+        // Remove parêntese de fechamento do final se vier de um concat anterior
+        if (i > 0) seg = seg.replace(/\)\s*$/, '').trim();
+        // Remove parênteses externos opcionais: ($var) → $var
+        seg = seg.replace(/^\(\s*(.*?)\s*\)$/, '$1').trim();
+
+        if (seg.startsWith("'") && seg.endsWith("'")) {
+          // String literal — extrai o conteúdo interno
+          parts.push({ type: 'str', value: seg.slice(1, -1) });
+        } else if (seg.startsWith('$')) {
+          parts.push({ type: 'var', value: seg.slice(1) });
+        } else if (seg === '') {
+          // ignorar
+        } else {
+          // token desconhecido — não converte
+          return null;
+        }
+      }
+
+      if (parts.length === 0) return null;
+
+      // Monta a template literal
+      let result = '`';
+      for (const p of parts) {
+        if (p.type === 'str') {
+          result += p.value; // já com \n etc
+        } else {
+          result += '${conversation.context.' + p.value + '}';
+        }
+      }
+      result += '`';
+      return result;
+    }
+
     function convert() {
       const raw = document.getElementById('input').value.trim();
       if (!raw) return;
       let expr = raw;
 
-      // Antes de remover <? ?>, detecta padrões "chave": "<? $var... ?>" e marca para desquotificar
-      // Substitui "valor": "<? $expr ?>" → "valor": PLACEHOLDER_expr
-      expr = expr.replace(/"(<\?\s*(.*?)\s*\?>)"/g, (_, _full, inner) => `"__UNQUOTE__${inner.trim()}__UNQUOTE__"`);
+      // 1. Antes de qualquer coisa, trata "<? concat-chain ?>" → template literal
+      //    Padrão: "chave": "<? ('texto')?.concat($var)?.concat(...) ?>"
+      expr = expr.replace(/"<\?\s*([\s\S]*?)\s*\?>"/g, (match, inner) => {
+        // Só tenta converter se parece uma cadeia de concat
+        if (!inner.includes('.concat(')) {
+          // Não é concat — marca para desquotificar normalmente
+          return `"__UNQUOTE__${inner.trim()}__UNQUOTE__"`;
+        }
+        const tpl = concatToTemplateLiteral(inner.trim());
+        if (tpl) return tpl; // substituiu por template literal (sem aspas externas)
+        // Fallback: desquotifica normalmente
+        return `"__UNQUOTE__${inner.trim()}__UNQUOTE__"`;
+      });
 
       expr = expr.replace(/<\?\s*/g, '').replace(/\s*\?>/g, '');
       expr = expr.replace(/intents\[0\]\.confidence\s*[><=!]+\s*[\d.]+\s*&&\s*/g, '');
@@ -343,8 +411,8 @@
       expr = expr.replace(/\(([^()]+)\)\s*\?\s*false\s*:\s*true/g, '!($1)');
       expr = expr.replace(/ {2,}/g, ' ').trim();
 
-      // Remove aspas ao redor de valores que eram SpEL e agora são referências JS
-      expr = expr.replace(/"__UNQUOTE__(.*?)__UNQUOTE__"/g, (_, inner) => inner.trim());
+      // Remove aspas ao redor de valores que eram SpEL simples e agora são referências JS
+      expr = expr.replace(/"__UNQUOTE__([\s\S]*?)__UNQUOTE__"/g, (_, inner) => inner.trim());
 
       const formatted = prettyFormat(expr);
       const inline = expr.replace(/\n/g, ' ').replace(/ {2,}/g, ' ').trim();
