@@ -370,17 +370,16 @@
       if (!raw) return;
       let expr = raw;
 
-      // 1. Antes de qualquer coisa, trata "<? concat-chain ?>" → template literal
-      //    Padrão: "chave": "<? ('texto')?.concat($var)?.concat(...) ?>"
+      // 1a. "$var" simples entre aspas (sem <? ?>) → remove aspas
+      expr = expr.replace(/"(\$[A-Za-z_][A-Za-z0-9_]*)"/g, (_, v) => v);
+
+      // 1b. "<? expr ?>" entre aspas → template literal ou desquotifica
       expr = expr.replace(/"<\?\s*([\s\S]*?)\s*\?>"/g, (match, inner) => {
-        // Só tenta converter se parece uma cadeia de concat
         if (!inner.includes('.concat(')) {
-          // Não é concat — marca para desquotificar normalmente
           return `"__UNQUOTE__${inner.trim()}__UNQUOTE__"`;
         }
         const tpl = concatToTemplateLiteral(inner.trim());
-        if (tpl) return tpl; // substituiu por template literal (sem aspas externas)
-        // Fallback: desquotifica normalmente
+        if (tpl) return tpl;
         return `"__UNQUOTE__${inner.trim()}__UNQUOTE__"`;
       });
 
@@ -412,7 +411,12 @@
       expr = expr.replace(/ {2,}/g, ' ').trim();
 
       // Remove aspas ao redor de valores que eram SpEL simples e agora são referências JS
-      expr = expr.replace(/"__UNQUOTE__([\s\S]*?)__UNQUOTE__"/g, (_, inner) => inner.trim());
+      // Também converte $var residuais dentro do UNQUOTE para conversation.context.var
+      expr = expr.replace(/"__UNQUOTE__([\s\S]*?)__UNQUOTE__"/g, (_, inner) => {
+        let val = inner.trim();
+        val = val.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, 'conversation.context.$1');
+        return val;
+      });
 
       const formatted = prettyFormat(expr);
       const inline = expr.replace(/\n/g, ' ').replace(/ {2,}/g, ' ').trim();
