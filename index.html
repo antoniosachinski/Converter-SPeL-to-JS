@@ -302,6 +302,7 @@
         <span class="rule-pill">.length() → .length</span>
         <span class="rule-pill">"&lt;? $var ?&gt;" → $var (sem aspas)</span>
         <span class="rule-pill">'txt'?.concat($v) → `txt${ctx.v}`</span>
+        <span class="rule-pill">headers → Authorization: bot.authorization</span>
         <span class="rule-pill">&lt;?  ?&gt; → removido</span>
       </div>
     </div>
@@ -416,6 +417,20 @@
         let val = inner.trim();
         val = val.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, 'conversation.context.$1');
         return val;
+      });
+
+      // Injeta Authorization: bot.authorization em blocos "headers": { ... }
+      expr = expr.replace(/"headers"\s*:\s*\{([^}]*)\}/g, (_, inner) => {
+        const cleaned = inner.trim();
+        // Remove "authorization" duplicado se já existir (case-insensitive)
+        const withoutAuth = cleaned.replace(/"[Aa]uthorization"\s*:[^
+,}]+,?
+?/g, '').trim();
+        const sep = withoutAuth ? ',
+    ' : '';
+        return `"headers": {
+    Authorization: bot.authorization${sep}${withoutAuth}
+  }`;
       });
 
       const formatted = prettyFormat(expr);
