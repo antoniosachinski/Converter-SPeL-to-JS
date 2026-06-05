@@ -300,6 +300,7 @@
         <span class="rule-pill">== → ===</span>
         <span class="rule-pill">!= → !==</span>
         <span class="rule-pill">.length() → .length</span>
+        <span class="rule-pill">"&lt;? $var ?&gt;" → $var (sem aspas)</span>
         <span class="rule-pill">&lt;?  ?&gt; → removido</span>
       </div>
     </div>
@@ -310,6 +311,10 @@
       const raw = document.getElementById('input').value.trim();
       if (!raw) return;
       let expr = raw;
+
+      // Antes de remover <? ?>, detecta padrões "chave": "<? $var... ?>" e marca para desquotificar
+      // Substitui "valor": "<? $expr ?>" → "valor": PLACEHOLDER_expr
+      expr = expr.replace(/"(<\?\s*(.*?)\s*\?>)"/g, (_, _full, inner) => `"__UNQUOTE__${inner.trim()}__UNQUOTE__"`);
 
       expr = expr.replace(/<\?\s*/g, '').replace(/\s*\?>/g, '');
       expr = expr.replace(/intents\[0\]\.confidence\s*[><=!]+\s*[\d.]+\s*&&\s*/g, '');
@@ -337,6 +342,9 @@
       expr = expr.replace(/([^!<>=])==([^=])/g, '$1 === $2');
       expr = expr.replace(/\(([^()]+)\)\s*\?\s*false\s*:\s*true/g, '!($1)');
       expr = expr.replace(/ {2,}/g, ' ').trim();
+
+      // Remove aspas ao redor de valores que eram SpEL e agora são referências JS
+      expr = expr.replace(/"__UNQUOTE__(.*?)__UNQUOTE__"/g, (_, inner) => inner.trim());
 
       const formatted = prettyFormat(expr);
       const inline = expr.replace(/\n/g, ' ').replace(/ {2,}/g, ' ').trim();
