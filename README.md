@@ -45,6 +45,3 @@ Ou hospede em qualquer serviço de páginas estáticas (GitHub Pages, Netlify, V
 - HTML, CSS e JavaScript puros — sem dependências ou bundlers
 - [Tabler Icons](https://tabler-icons.io/) via CDN para os ícones
 
-## 📄 Licença
-
-MIT
