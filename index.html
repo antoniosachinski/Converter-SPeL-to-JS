@@ -420,17 +420,11 @@
       });
 
       // Injeta Authorization: bot.authorization em blocos "headers": { ... }
-      expr = expr.replace(/"headers"\s*:\s*\{([^}]*)\}/g, (_, inner) => {
-        const cleaned = inner.trim();
-        // Remove "authorization" duplicado se já existir (case-insensitive)
-        const withoutAuth = cleaned.replace(/"[Aa]uthorization"\s*:[^
-,}]+,?
-?/g, '').trim();
-        const sep = withoutAuth ? ',
-    ' : '';
-        return `"headers": {
-    Authorization: bot.authorization${sep}${withoutAuth}
-  }`;
+      expr = expr.replace(/"headers"\s*:\s*\{([^}]*)\}/g, function(_, inner) {
+        var cleaned = inner.trim();
+        var withoutAuth = cleaned.replace(/"[Aa]uthorization"\s*:[^\n,}]+,?\n?/g, '').trim();
+        var sep = withoutAuth ? ',\n    ' : '';
+        return '"headers": {\n    Authorization: bot.authorization' + sep + withoutAuth + '\n  }';
       });
 
       const formatted = prettyFormat(expr);
